@@ -1,0 +1,8 @@
+* text=auto eol=lf
+
+*.py   text
+*.md   text
+*.toml text
+
+*.svg  text linguist-documentation
+docs/* linguist-documentation
