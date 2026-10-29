@@ -7,7 +7,7 @@ without an explicit request.
 ## Getting set up
 
 ```console
-$ git clone https://github.com/OWNER/devdust.git
+$ git clone https://github.com/tatlisbeyefendi/devdust.git
 $ cd devdust
 $ python3 -m venv .venv && source .venv/bin/activate
 $ make install     # editable install + dev extras

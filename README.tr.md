@@ -63,7 +63,7 @@ $ pip install devdust         # ya da mevcut ortama
 Depodan:
 
 ```console
-$ git clone https://github.com/OWNER/devdust.git
+$ git clone https://github.com/tatlisbeyefendi/devdust.git
 $ cd devdust
 $ pipx install .
 ```

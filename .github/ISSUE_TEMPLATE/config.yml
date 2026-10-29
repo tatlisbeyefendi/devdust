@@ -1,5 +1,5 @@
 blank_issues_enabled: true
 contact_links:
   - name: Rule table reference
-    url: https://github.com/OWNER/devdust/blob/main/src/devdust/rules.py
+    url: https://github.com/tatlisbeyefendi/devdust/blob/main/src/devdust/rules.py
     about: Every directory pattern devdust recognises lives here.

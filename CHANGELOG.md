@@ -76,6 +76,6 @@ honest dependency floor.
 - Test suite covering rules, formatting, scanning, deletion guards
   and the CLI, plus GitHub Actions CI on Python 3.9–3.13.
 
-[Unreleased]: https://github.com/OWNER/devdust/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/OWNER/devdust/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/OWNER/devdust/releases/tag/v0.1.0
+[Unreleased]: https://github.com/tatlisbeyefendi/devdust/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/tatlisbeyefendi/devdust/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/tatlisbeyefendi/devdust/releases/tag/v0.1.0

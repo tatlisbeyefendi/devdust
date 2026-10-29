@@ -63,7 +63,7 @@ $ pip install devdust         # or into the current environment
 From a checkout:
 
 ```console
-$ git clone https://github.com/OWNER/devdust.git
+$ git clone https://github.com/tatlisbeyefendi/devdust.git
 $ cd devdust
 $ pipx install .
 ```
