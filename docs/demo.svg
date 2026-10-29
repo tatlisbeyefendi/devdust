@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="576" height="469" viewBox="0 0 576 469" role="img" aria-label="devdust — dry run">
+<title>devdust — dry run</title>
+<style>text{font-family:ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;font-size:13.0px;white-space:pre}</style>
+<rect width="576" height="469" rx="10" fill="#0d1117"/>
+<rect width="576" height="34.0" rx="10" fill="#161b22"/>
+<rect y="24.0" width="576" height="10" fill="#161b22"/>
+<circle cx="22.0" cy="17.0" r="5.5" fill="#ff5f57"/>
+<circle cx="40.0" cy="17.0" r="5.5" fill="#febc2e"/>
+<circle cx="58.0" cy="17.0" r="5.5" fill="#28c840"/>
+<text x="288.0" y="21.5" fill="#8b949e" text-anchor="middle" font-size="11.5">devdust — dry run</text>
+<text x="22" y="65.0" xml:space="preserve"><tspan fill-opacity="0.62">$</tspan><tspan> </tspan><tspan font-weight="600">devdust ~ --include-review</tspan></text>
+<text x="22" y="107.0" xml:space="preserve"><tspan font-weight="600">devdust 0.1.0</tspan><tspan> · </tspan><tspan fill-opacity="0.62">1 root</tspan><tspan> · </tspan><tspan fill-opacity="0.62">16 dirs scanned</tspan><tspan> · </tspan><tspan fill-opacity="0.62">0.00s</tspan></text>
+<text x="22" y="149.0" xml:space="preserve"><tspan>  </tspan><tspan fill-opacity="0.62">   SIZE</tspan><tspan>  </tspan><tspan fill-opacity="0.62">FILES</tspan><tspan>  </tspan><tspan fill-opacity="0.62"> AGE</tspan><tspan>  </tspan><tspan fill-opacity="0.62">KIND   </tspan><tspan>  </tspan><tspan fill-opacity="0.62">CONF  </tspan><tspan>  </tspan><tspan fill-opacity="0.62">PATH                       </tspan></text>
+<text x="22" y="170.0" xml:space="preserve"><tspan>  -------  -----  ----  -------  ------  ---------------------------</tspan></text>
+<text x="22" y="191.0" xml:space="preserve"><tspan>  </tspan><tspan font-weight="600">73.7 MB</tspan><tspan>  </tspan><tspan fill-opacity="0.62">   46</tspan><tspan>  </tspan><tspan fill-opacity="0.62">  2d</tspan><tspan>  </tspan><tspan fill="#56d4dd">node   </tspan><tspan>  </tspan><tspan fill="#7ee787">safe  </tspan><tspan>  ~/work/web-app/.next</tspan></text>
+<text x="22" y="212.0" xml:space="preserve"><tspan>  </tspan><tspan font-weight="600">66.7 MB</tspan><tspan>  </tspan><tspan fill-opacity="0.62">   43</tspan><tspan>  </tspan><tspan fill-opacity="0.62">  2d</tspan><tspan>  </tspan><tspan fill="#56d4dd">node   </tspan><tspan>  </tspan><tspan fill="#7ee787">safe  </tspan><tspan>  ~/work/web-app/node_modules</tspan></text>
+<text x="22" y="233.0" xml:space="preserve"><tspan>  </tspan><tspan font-weight="600">64.6 MB</tspan><tspan>  </tspan><tspan fill-opacity="0.62">   52</tspan><tspan>  </tspan><tspan fill-opacity="0.62"> 31d</tspan><tspan>  </tspan><tspan fill="#56d4dd">rust   </tspan><tspan>  </tspan><tspan fill="#ffd166">review</tspan><tspan>  ~/oss/engine/target</tspan></text>
+<text x="22" y="254.0" xml:space="preserve"><tspan>  </tspan><tspan font-weight="600">11.8 MB</tspan><tspan>  </tspan><tspan fill-opacity="0.62">   27</tspan><tspan>  </tspan><tspan fill-opacity="0.62">  2d</tspan><tspan>  </tspan><tspan fill="#56d4dd">node   </tspan><tspan>  </tspan><tspan fill="#7ee787">safe  </tspan><tspan>  ~/oss/site/node_modules</tspan></text>
+<text x="22" y="275.0" xml:space="preserve"><tspan>  </tspan><tspan font-weight="600">10.4 MB</tspan><tspan>  </tspan><tspan fill-opacity="0.62">    3</tspan><tspan>  </tspan><tspan fill-opacity="0.62">214d</tspan><tspan>  </tspan><tspan fill="#56d4dd">java   </tspan><tspan>  </tspan><tspan fill="#ffd166">review</tspan><tspan>  ~/archive/legacy-crm/out</tspan></text>
+<text x="22" y="296.0" xml:space="preserve"><tspan>  </tspan><tspan font-weight="600">1.81 MB</tspan><tspan>  </tspan><tspan fill-opacity="0.62">   60</tspan><tspan>  </tspan><tspan fill-opacity="0.62">  2d</tspan><tspan>  </tspan><tspan fill="#56d4dd">python </tspan><tspan>  </tspan><tspan fill="#7ee787">safe  </tspan><tspan>  ~/work/api/.venv</tspan></text>
+<text x="22" y="317.0" xml:space="preserve"><tspan>  </tspan><tspan font-weight="600">1.65 MB</tspan><tspan>  </tspan><tspan fill-opacity="0.62">   35</tspan><tspan>  </tspan><tspan fill-opacity="0.62">214d</tspan><tspan>  </tspan><tspan fill="#56d4dd">generic</tspan><tspan>  </tspan><tspan fill="#ffd166">review</tspan><tspan>  ~/archive/legacy-crm/build</tspan></text>
+<text x="22" y="338.0" xml:space="preserve"><tspan>  </tspan><tspan font-weight="600"> 298 KB</tspan><tspan>  </tspan><tspan fill-opacity="0.62">   14</tspan><tspan>  </tspan><tspan fill-opacity="0.62">  2d</tspan><tspan>  </tspan><tspan fill="#56d4dd">python </tspan><tspan>  </tspan><tspan fill="#7ee787">safe  </tspan><tspan>  ~/work/api/__pycache__</tspan></text>
+<text x="22" y="380.0" xml:space="preserve"><tspan>  8 of 13 directories · </tspan><tspan font-weight="600">231 MB</tspan><tspan> reclaimable</tspan></text>
+<text x="22" y="401.0" xml:space="preserve"><tspan>  </tspan><tspan fill="#7ee787">safe</tspan><tspan> 154 MB (5)   </tspan><tspan fill="#ffd166">review</tspan><tspan> 76.6 MB (3)</tspan></text>
+<text x="22" y="443.0" xml:space="preserve"><tspan>  </tspan><tspan fill-opacity="0.62">Dry run — nothing deleted. Re-run with --delete to remove these.</tspan></text>
+</svg>
