@@ -32,7 +32,7 @@ _Nothing yet._
 - Colour output with `NO_COLOR` / `FORCE_COLOR` support and a `--color` switch.
 - Documentation in English and Turkish, with demo images rendered from real CLI
   output (`make demo`).
-- Test suite (106 tests) covering rules, formatting, scanning, deletion guards
+- Test suite covering rules, formatting, scanning, deletion guards
   and the CLI, plus GitHub Actions CI on Python 3.9–3.13.
 
 [Unreleased]: https://github.com/OWNER/devdust/compare/v0.1.0...HEAD

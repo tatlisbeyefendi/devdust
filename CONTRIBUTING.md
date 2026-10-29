@@ -11,7 +11,7 @@ $ git clone https://github.com/OWNER/devdust.git
 $ cd devdust
 $ python3 -m venv .venv && source .venv/bin/activate
 $ make install     # editable install + dev extras
-$ make test        # 106 tests, well under a second
+$ make test        # the whole suite runs in well under a second
 $ make lint        # ruff check + ruff format --check
 ```
 
