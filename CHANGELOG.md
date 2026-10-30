@@ -9,6 +9,28 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 _Nothing yet._
 
+## [0.3.0] — 2026-10-30
+
+Hâlâ **çalışan bir demo** — ama artık silmek geri alınabiliyor.
+
+### Eklenenler
+- **Geri alınabilir silme.** `--delete` klasörleri silmek yerine çöp kasasına
+  taşır (`~/.local/state/devdust/stash`, `$DEVFDUST_STASH` ile değişir), her
+  çalıştırma için bir `manifest.json` yazar: özgün mutlak yol, boyut, eşleşen
+  kural. `--hard` eski davranışı korur.
+- **`devdust undo [ID]`** — kasayı yerine koyar; `--only` ile tek klasör,
+  `--force` ile mevcut dizinin üzerine, `--dry-run` ile provası, `--json` çıktısı.
+  Çakışma varsa reddeder ve nedenini söyler.
+- **`devdust stash [list|show ID]`** — kasada ne var, ne zaman, ne kadar.
+- **`devdust purge [ID|--all|--keep N]`** — geri almayı imkânsız kılar; TTY yoksa
+  `--yes` olmadan reddeder.
+- En yeni 8 kasa kaydı tutulur, eskiler `--delete` sırasında otomatik budanır.
+- `docs/demo-undo.svg` gerçek CLI çıktısından üretiliyor (`scripts/render_demo.py`).
+
+### Değişenler
+- `--delete` artık varsayılan olarak kasa kullanıyor; kalıcı silme `--hard`.
+- Testler: 162 → **189**.
+
 ## [0.2.0] — 2026-10-30
 
 The "this is a demo, and it grows" release: a config file you can commit, a

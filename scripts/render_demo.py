@@ -4,7 +4,8 @@
     python scripts/render_demo.py
 
 Creates a throw-away workspace in the temp directory, runs ``devdust`` against
-it and renders the output into ``docs/demo.svg`` and ``docs/demo-delete.svg``.
+it and renders the output into ``docs/demo.svg``, ``docs/demo-delete.svg`` and
+``docs/demo-undo.svg``.
 Nothing is hard-coded, so the images cannot drift away from the tool.
 """
 
@@ -68,6 +69,19 @@ def main() -> int:
             "--yes",
             "--top",
             "5",
+        ],
+        env,
+    )
+    run(
+        [
+            *render,
+            str(REPO / "docs" / "demo-undo.svg"),
+            "--title",
+            "devdust undo — put it back",
+            "--prompt",
+            "devdust undo",
+            "--",
+            *[PYTHON, "-m", "devdust", "undo"],
         ],
         env,
     )

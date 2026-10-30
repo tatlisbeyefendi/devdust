@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "devdust"
-version = "0.2.0"
+version = "0.3.0"
 description = "Find the build artifacts and caches your projects leave behind, and sweep them away safely."
 readme = "README.md"
 requires-python = ">=3.11"

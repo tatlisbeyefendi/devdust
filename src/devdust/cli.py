@@ -13,6 +13,7 @@ from typing import Any
 from . import __version__
 from . import config as config_mod
 from . import rules as rules_mod
+from . import stash as stash_mod
 from .formatting import (
     Style,
     ellipsize,
@@ -26,9 +27,12 @@ from .formatting import (
     supports_color,
     terminal_width,
 )
-from .scanner import Match, ScanError, ScanResult, remove, scan
+from .scanner import Match, SafetyError, ScanError, ScanResult, remove, scan
 
 PROG = "devdust"
+
+#: How many stash records to keep after a --delete run.
+STASH_KEEP = 8
 
 EPILOG = """\
 examples:
@@ -38,7 +42,10 @@ examples:
   devdust --min-size 100MB --top 0 report everything worth seeing
   devdust --kinds node,python      stay inside one ecosystem
   devdust --summary                where is the space actually going?
-  devdust --delete                 remove the safe matches (asks first)
+  devdust --delete                 move the safe matches to the stash (asks first)
+  devdust undo                     put the last stash back where it was
+  devdust stash                    what is sitting in the stash right now
+  devdust --delete --hard           delete for real, no undo (asks first)
 
   devdust init                     write a starter .devdust.toml
   devdust rules                    list every known directory pattern
@@ -95,6 +102,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--yes",
         action="store_true",
         help="do not ask for confirmation when deleting",
+    )
+    parser.add_argument(
+        "--hard",
+        action="store_true",
+        help="with --delete: remove for real instead of moving to the stash",
+    )
+    parser.add_argument(
+        "--stash-dir",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="where --delete parks directories (default: $DEVFDUST_STASH or "
+        "~/.local/state/devdust/stash)",
     )
     parser.add_argument(
         "--include-review",
@@ -447,8 +467,21 @@ def _print_table(style: Style, shown: Sequence[Match], args: argparse.Namespace)
 
 def _print_json(result: ScanResult, matches: Sequence[Match], elapsed: float, args) -> int:
     removal = None
+    stashed = None
     if args.delete and matches:
-        removal = remove(matches, roots=result.roots, dry_run=False)
+        if getattr(args, "hard", False):
+            removal = remove(matches, roots=result.roots, dry_run=False)
+        else:
+            try:
+                stashed = stash_mod.stash(
+                    matches,
+                    roots=result.roots,
+                    stash_dir=_stash_dir(args),
+                    label=result_label(getattr(args, "config_source", None)),
+                )
+            except (stash_mod.StashError, SafetyError) as exc:
+                print(f"{PROG}: {exc}", file=sys.stderr)
+                return 1
     payload = _as_json(
         result,
         matches,
@@ -456,6 +489,8 @@ def _print_json(result: ScanResult, matches: Sequence[Match], elapsed: float, ar
         removal=removal,
         config_source=getattr(args, "config_source", None),
     )
+    if stashed is not None:
+        payload["stash"] = stashed.as_dict()
     json.dump(payload, sys.stdout, indent=2, ensure_ascii=False)
     sys.stdout.write("\n")
     if removal is not None and removal.failures:
@@ -465,6 +500,11 @@ def _print_json(result: ScanResult, matches: Sequence[Match], elapsed: float, ar
             )
         return 1
     return 0
+
+
+def _stash_dir(args: argparse.Namespace) -> Path:
+    chosen = getattr(args, "stash_dir", None)
+    return Path(chosen).expanduser() if chosen else stash_mod.default_stash_dir()
 
 
 def _do_delete(
@@ -477,6 +517,8 @@ def _do_delete(
     targets = list(shown)
     size = sum(m.size for m in targets)
     label = f"{len(targets)} director{'ies' if len(targets) != 1 else 'y'} ({human_size(size)})"
+    hard = bool(getattr(args, "hard", False))
+    verb = "Delete" if hard else "Move to the stash"
 
     if not args.yes:
         if not sys.stdin.isatty():
@@ -486,13 +528,64 @@ def _do_delete(
                 file=sys.stderr,
             )
             return 1
-        sys.stdout.write(f"\n  Delete {label}? [y/N] ")
+        hint = "" if hard else " — undoable with 'devdust undo'"
+        sys.stdout.write(f"\n  {verb} {label}?{hint} [y/N] ")
         sys.stdout.flush()
         answer = sys.stdin.readline().strip().lower()
         if answer not in ("y", "yes"):
             print("  " + style.dim("aborted, nothing deleted."))
             return 0
 
+    if hard:
+        return _do_hard_delete(style, result, targets, shown, total)
+
+    try:
+        record = stash_mod.stash(
+            targets,
+            roots=result.roots,
+            stash_dir=_stash_dir(args),
+            label=result_label(getattr(args, "config_source", None)),
+        )
+    except (stash_mod.StashError, SafetyError) as exc:
+        print(f"\n  {style.yellow('!')} {exc}", file=sys.stderr)
+        return 1
+
+    summary = (
+        f"stashed {len(record.items)} of {len(targets)} directories "
+        f"({human_size(record.total_size)}) as {record.id}"
+    )
+    print("\n  " + style.green("\u2713 " + summary))
+    print("  " + style.dim(f"undo with: {PROG} undo {record.id}"))
+    purged, freed = stash_mod.prune(_stash_dir(args), keep=STASH_KEEP)
+    if purged:
+        print(
+            "  "
+            + style.dim(
+                f"purged {purged} older stash{'es' if purged != 1 else ''} "
+                f"(keeps the newest {STASH_KEEP}) · {human_size(freed)} gone for good"
+            )
+        )
+    if len(shown) != total:
+        print(
+            "  "
+            + style.dim(
+                f"only the {len(shown)} entries shown were moved; use --top 0 to cover the rest."
+            )
+        )
+    return 0
+
+
+def result_label(config_source: Path | None) -> str:
+    return f"config:{config_source.name}" if config_source else ""
+
+
+def _do_hard_delete(
+    style: Style,
+    result: ScanResult,
+    targets: Sequence[Match],
+    shown: Sequence[Match],
+    total: int,
+) -> int:
     removal = remove(targets, roots=result.roots, dry_run=False)
     for failure in removal.failures:
         print(
@@ -500,8 +593,10 @@ def _do_delete(
             file=sys.stderr,
         )
     freed = human_size(removal.freed)
-    summary = f"removed {removal.removed} of {len(targets)} directories · freed {freed}"
-    print("\n  " + (style.green("✓ " + summary) if not removal.failures else style.bold(summary)))
+    summary = f"removed {removal.removed} of {len(targets)} directories · freed {freed} (permanent)"
+    print(
+        "\n  " + (style.green("\u2713 " + summary) if not removal.failures else style.bold(summary))
+    )
     if len(shown) != total:
         print(
             "  "
@@ -595,6 +690,243 @@ def _cmd_init(argv: Sequence[str]) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------- stash
+
+
+def _cmd_stash(argv: Sequence[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog=f"{PROG} stash",
+        description=(
+            "What --delete parked instead of destroying. Every record can be put "
+            "back with 'devdust undo', or dropped for good with 'devdust purge'."
+        ),
+    )
+    parser.add_argument("action", nargs="?", choices=("list", "show"), default="list")
+    parser.add_argument("id", nargs="?", help="record id (a unique prefix is enough)")
+    parser.add_argument("--stash-dir", type=Path, default=None, metavar="PATH")
+    parser.add_argument(
+        "--json", action="store_true", dest="as_json", help="machine readable output"
+    )
+    parser.add_argument("--color", choices=("auto", "always", "never"), default="auto")
+    args = parser.parse_args(list(argv))
+    style = Style(enabled=_use_color(args.color))
+    root = Path(args.stash_dir).expanduser() if args.stash_dir else stash_mod.default_stash_dir()
+
+    try:
+        if args.action == "show":
+            record = stash_mod.find_record(args.id, root)
+            records = [record]
+        else:
+            records = stash_mod.list_records(root)
+    except stash_mod.StashError as exc:
+        print(f"{PROG}: {exc}", file=sys.stderr)
+        return 1
+
+    if args.as_json:
+        json.dump([r.as_dict() for r in records], sys.stdout, indent=2, ensure_ascii=False)
+        sys.stdout.write("\n")
+        return 0
+
+    if not records:
+        print("  " + style.dim("stash is empty — nothing has been deleted yet."))
+        print("  " + style.dim(f"stash directory: {shorten_home(str(root))}"))
+        return 0
+
+    rows = []
+    for record in records:
+        rows.append(
+            [
+                record.id,
+                human_size(record.total_size),
+                str(len(record.items)),
+                human_age_from_string(record.created),
+                shorten_home(str(record.items[0].original.parent)) if record.items else "",
+            ]
+        )
+    print(
+        render_styled_table(
+            ["STASH", "SIZE", "DIRS", "WHEN", "WHERE"],
+            rows,
+            styler=lambda col, _row, cell: (
+                style.paint(cell, "bold") if col == 0 else style.dim(cell)
+            ),
+            header_styler=lambda _c, cell: style.dim(cell),
+        )
+    )
+    if len(records) == 1:
+        print()
+        for item in records[0].items:
+            print(
+                "  " + style.dim(f"· {shorten_home(str(item.original))}  ({human_size(item.size)})")
+            )
+    total = sum(r.total_size for r in records)
+    print(
+        "\n  "
+        + style.dim(
+            f"{len(records)} stash{'es' if len(records) != 1 else ''} · {human_size(total)} "
+            f"in {shorten_home(str(root))}"
+        )
+    )
+    print("  " + style.dim(f"put it back with: {PROG} undo"))
+    return 0
+
+
+def human_age_from_string(created: str) -> str:
+    from datetime import datetime
+
+    try:
+        then = datetime.fromisoformat(created).timestamp()
+    except ValueError:
+        return "?"
+    return human_age(max(0.0, time.time() - then))
+
+
+# ----------------------------------------------------------------------- undo
+
+
+def _cmd_undo(argv: Sequence[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog=f"{PROG} undo",
+        description="Move stashed directories back where they came from.",
+    )
+    parser.add_argument("id", nargs="?", help="record id (default: the newest stash)")
+    parser.add_argument(
+        "--only",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help="restore just this directory (repeatable)",
+    )
+    parser.add_argument("--force", action="store_true", help="replace whatever is there now")
+    parser.add_argument("--dry-run", action="store_true", help="say what would happen")
+    parser.add_argument("--stash-dir", type=Path, default=None, metavar="PATH")
+    parser.add_argument("--json", action="store_true", dest="as_json")
+    parser.add_argument("--color", choices=("auto", "always", "never"), default="auto")
+    args = parser.parse_args(list(argv))
+    style = Style(enabled=_use_color(args.color))
+    root = Path(args.stash_dir).expanduser() if args.stash_dir else stash_mod.default_stash_dir()
+
+    try:
+        record = stash_mod.find_record(args.id, root)
+        outcome = stash_mod.restore(record, only=args.only, force=args.force, dry_run=args.dry_run)
+    except stash_mod.StashError as exc:
+        print(f"{PROG}: {exc}", file=sys.stderr)
+        return 1
+
+    if args.as_json:
+        json.dump(
+            {
+                "stash": record.id,
+                "dry_run": args.dry_run,
+                "restored": outcome.restored,
+                "size": outcome.size,
+                "results": [
+                    {"path": str(r.item.original), "ok": r.ok, "error": r.error}
+                    for r in outcome.restores
+                ],
+            },
+            sys.stdout,
+            indent=2,
+            ensure_ascii=False,
+        )
+        sys.stdout.write("\n")
+        return 0 if not outcome.failures else 1
+
+    for failure in outcome.failures:
+        print(
+            f"  {style.yellow('!')} {shorten_home(str(failure.item.original))}: {failure.error}",
+            file=sys.stderr,
+        )
+    if not outcome.restores:
+        print("  " + style.dim(f"nothing matched in stash {record.id}"))
+        return 1
+    verb = "would restore" if args.dry_run else "restored"
+    summary = (
+        f"{verb} {outcome.restored} of {len(outcome.restores)} directories "
+        f"({human_size(outcome.size)}) from {record.id}"
+    )
+    print(
+        "  " + (style.green("\u2713 " + summary) if not outcome.failures else style.bold(summary))
+    )
+    return 0 if not outcome.failures else 1
+
+
+# ---------------------------------------------------------------------- purge
+
+
+def _cmd_purge(argv: Sequence[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog=f"{PROG} purge",
+        description="Throw stash records away for good.",
+    )
+    parser.add_argument("id", nargs="?", help="record id (default: the newest stash)")
+    parser.add_argument("--all", action="store_true", help="purge every record")
+    parser.add_argument(
+        "--keep",
+        type=int,
+        default=None,
+        metavar="N",
+        help="keep the N newest records and purge the rest",
+    )
+    parser.add_argument("--dry-run", action="store_true", help="say what would go")
+    parser.add_argument("-y", "--yes", action="store_true", help="skip the confirmation")
+    parser.add_argument("--stash-dir", type=Path, default=None, metavar="PATH")
+    parser.add_argument("--color", choices=("auto", "always", "never"), default="auto")
+    args = parser.parse_args(list(argv))
+    style = Style(enabled=_use_color(args.color))
+    root = Path(args.stash_dir).expanduser() if args.stash_dir else stash_mod.default_stash_dir()
+
+    try:
+        if args.keep is not None:
+            records = stash_mod.list_records(root)[args.keep :]
+        elif args.all:
+            records = stash_mod.list_records(root)
+        else:
+            records = [stash_mod.find_record(args.id, root)]
+    except stash_mod.StashError as exc:
+        print(f"{PROG}: {exc}", file=sys.stderr)
+        return 1
+
+    if not records:
+        print("  " + style.dim("nothing to purge."))
+        return 0
+
+    size = sum(r.total_size for r in records)
+    label = f"{len(records)} stash{'es' if len(records) != 1 else ''} ({human_size(size)})"
+    if args.dry_run:
+        for record in records:
+            print("  " + style.dim(f"would purge {record.id} · {human_size(record.total_size)}"))
+        print("\n  " + style.dim(f"{label} — nothing deleted."))
+        return 0
+    if not args.yes:
+        if not sys.stdin.isatty():
+            print(
+                f"\n  {style.yellow('refusing to purge without confirmation')}: re-run with --yes.",
+                file=sys.stderr,
+            )
+            return 1
+        sys.stdout.write(f"\n  Purge {label} for good? [y/N] ")
+        sys.stdout.flush()
+        if sys.stdin.readline().strip().lower() not in ("y", "yes"):
+            print("  " + style.dim("aborted, nothing purged."))
+            return 0
+
+    failures = 0
+    for record in records:
+        try:
+            stash_mod.purge(record)
+        except stash_mod.StashError as exc:
+            print(f"  {style.yellow('!')} {exc}", file=sys.stderr)
+            failures += 1
+    print(
+        "\n  "
+        + style.green(
+            f"\u2713 purged {len(records) - failures} stashes · {human_size(size)} gone for good"
+        )
+    )
+    return 0 if not failures else 1
+
+
 # --------------------------------------------------------------------- config
 
 
@@ -644,6 +976,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _cmd_rules(argv[1:])
     if argv and argv[0] == "init":
         return _cmd_init(argv[1:])
+    if argv and argv[0] == "stash":
+        return _cmd_stash(argv[1:])
+    if argv and argv[0] == "undo":
+        return _cmd_undo(argv[1:])
+    if argv and argv[0] == "purge":
+        return _cmd_purge(argv[1:])
 
     parser = build_parser()
     try:

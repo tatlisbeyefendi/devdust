@@ -14,6 +14,8 @@
 and deletes them only when you ask, and only the ones you were shown.
 
 - **Dry run by default.** Nothing is ever deleted without `--delete`.
+- **Deleting is reversible.** `--delete` moves directories into a stash and
+  `devdust undo` puts them back — `--hard` is the one that really burns them.
 - **Two confidence tiers.** Cheap-to-rebuild caches are `safe`; ambiguous names
   like `build/`, `bin/` or `vendor/` are `review` and stay out of the way
   unless you opt in.
@@ -27,9 +29,8 @@ and deletes them only when you ask, and only the ones you were shown.
 >
 > `devdust` is a small, complete tool — it scans, filters, reports, deletes and
 > has a test suite and CI to keep it honest — but it is a **demo of the idea**,
-> not a mature product. Version **0.2.0** is an early preview: expect the CLI,
-> the output and the rule table to change between releases, and treat deletion
-> as permanent (there is no undo yet).
+> not a mature product. Version **0.3.0** is an early preview: expect the CLI,
+> the output and the rule table to change between releases.
 >
 > The point of shipping it as a demo is to make the shape of the final tool
 > visible and testable early. Feedback, bug reports and "please teach it about
@@ -41,8 +42,8 @@ and deletes them only when you ask, and only the ones you were shown.
 | --- | --- |
 | ✅ 0.1.0 | Scan, filter, two confidence tiers, safe delete, JSON output |
 | ✅ 0.2.0 | `.devdust.toml` + `devdust init`, `--summary` breakdown, Python 3.11+ only |
-| 🔜 0.3.0 | Undo: move to the OS trash (or a `--stash` directory) instead of `rm -rf` |
-| 🔜 | Parallel scanning (`--jobs`) for very large trees |
+| ✅ 0.3.0 | Undo: `--delete` stashes, `devdust undo` restores, `devdust purge` finishes the job |
+| 🔜 0.4.0 | Parallel scanning (`--jobs`) for very large trees |
 | 🔜 | `.gitignore`-aware mode, and per-project overrides in one config |
 | 🔜 | Interactive review screen: pick directories one by one |
 | 💭 | Editor / CI integrations, JSON schema, `devdust doctor`, shell completions |
@@ -140,8 +141,36 @@ Deleting directories deserves paranoia, so `devdust` has a few rules of its own:
    it is reported on stderr and reflected in the exit code. Read-only trees are
    unlocked and retried once.
 
-There is **no undo** yet — restoring a deleted `node_modules` means reinstalling
-it. That is exactly what the 0.3.0 roadmap item is about.
+`--delete` does not destroy anything by default: it **moves** the directories
+into a stash and remembers where they came from, so a wrong `--kinds` or an
+over-eager `--top` costs you a `devdust undo` instead of a rebuild. `--hard`
+skips the stash and is the only mode that deletes for real.
+
+## Undo
+
+<img src="docs/demo-undo.svg" alt="devdust undo restoring five stashed directories" width="560">
+
+```
+$ devdust ~ --delete --yes
+  ✓ stashed 5 of 5 directories (154 MB) as 20261030T182541-0791
+  undo with: devdust undo 20261030T182541-0791
+
+$ devdust stash                    # what is sitting in there?
+$ devdust undo                     # newest stash, back where it was
+$ devdust undo 20261030T182541     # a specific one (a unique prefix is enough)
+$ devdust undo --only node_modules # just one of them
+$ devdust purge --all              # no more undo: gone for good
+```
+
+Stashes live in `~/.local/state/devdust/stash` (`$DEVFDUST_STASH` or
+`$XDG_STATE_HOME` override that), one directory and one `manifest.json` per
+run. The manifest keeps the original absolute path, the measured size and the
+matching rule — the undo reads it, not a guess. The newest 8 records are kept;
+older ones are pruned automatically so the stash cannot quietly become the
+disk problem it was supposed to fix.
+
+If something already occupies the original path, `undo` refuses and says so;
+`--force` replaces it.
 
 ## Configuration
 
@@ -189,11 +218,16 @@ the file is documentation first and configuration second.
 devdust [PATH ...] [options]
 devdust rules            # every known directory pattern
 devdust init [DIR]       # write a starter .devdust.toml
+devdust stash [list|show ID]   # what --delete parked
+devdust undo [ID]        # put it back
+devdust purge [ID|--all] # stop being able to
 ```
 
 | Option | What it does |
 | --- | --- |
-| `--delete` | Remove the directories shown instead of only reporting them |
+| `--delete` | Move the directories shown into the stash (asks first) |
+| `--hard` | With `--delete`: remove them for real, no undo |
+| `--stash-dir PATH` | Where `--delete` parks directories (default `~/.local/state/devdust/stash`) |
 | `-y`, `--yes` | Skip the confirmation prompt (required when stdin is not a TTY) |
 | `--include-review` | Also consider ambiguous names such as `build/`, `bin/`, `target/` |
 | `--kinds LIST` | Restrict to ecosystems, e.g. `--kinds node,python` |

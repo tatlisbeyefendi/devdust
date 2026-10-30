@@ -92,7 +92,8 @@ def test_json_totals_match_items(workspace, capsys):
 
 
 def test_delete_with_yes(workspace, capsys):
-    code, out, err = run(capsys, str(workspace), "--delete", "--yes", "--color", "never")
+    """--hard is the old behaviour: gone for good, nothing in the stash."""
+    code, out, err = run(capsys, str(workspace), "--delete", "--hard", "--yes", "--color", "never")
     assert code == 0
     assert "freed" in out
     assert not (workspace / "web" / "node_modules").exists()
@@ -118,14 +119,14 @@ def test_delete_prompts_and_aborts_on_no(workspace, capsys, monkeypatch):
 
 def test_delete_prompts_and_proceeds_on_yes(workspace, capsys, monkeypatch):
     monkeypatch.setattr(sys, "stdin", _FakeTty("yes\n"))
-    code, out, _ = run(capsys, str(workspace), "--delete", "--color", "never")
+    code, out, _ = run(capsys, str(workspace), "--delete", "--hard", "--color", "never")
     assert code == 0
     assert "removed" in out
     assert not (workspace / "web" / "node_modules").exists()
 
 
 def test_delete_with_json_reports_removals(workspace, capsys):
-    code, out, _ = run(capsys, str(workspace), "--delete", "--yes", "--json")
+    code, out, _ = run(capsys, str(workspace), "--delete", "--hard", "--yes", "--json")
     assert code == 0
     payload = json.loads(out)
     assert payload["removed"]["directories"] == 3
@@ -135,7 +136,7 @@ def test_delete_with_json_reports_removals(workspace, capsys):
 
 def test_only_shown_entries_are_deleted(workspace, capsys):
     code, out, _ = run(
-        capsys, str(workspace), "--delete", "--yes", "--top", "1", "--color", "never"
+        capsys, str(workspace), "--delete", "--hard", "--yes", "--top", "1", "--color", "never"
     )
     assert code == 0
     candidates = [

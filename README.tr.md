@@ -27,9 +27,8 @@
 >
 > `devdust` küçük ama baştan sona çalışan bir araç: tarıyor, filtreliyor,
 > raporluyor, siliyor; testleri ve CI'ı var. Yine de bu bir **fikir demosu**,
-> olgun bir ürün değil. **0.2.0** sürümü erken bir önizleme: CLI'ın, çıktının ve
-> kural tablosunun sürümler arasında değişmesini bekleyin ve silmeyi kalıcı kabul
-> edin (henüz geri alma yok).
+> olgun bir ürün değil. **0.3.0** sürümü erken bir önizleme: CLI'ın, çıktının ve
+> kural tablosunun sürümler arasında değişmesini bekleyin.
 >
 > Demoyu erken yayınlamanın amacı, son aracın şeklini baştan görünür ve
 > denenebilir kılmak. Geri bildirim, hata raporları ve "benim ekosistemimi de
@@ -41,8 +40,8 @@
 | --- | --- |
 | ✅ 0.1.0 | Tarama, filtreler, iki güven seviyesi, güvenli silme, JSON çıktısı |
 | ✅ 0.2.0 | `.devdust.toml` + `devdust init`, `--summary` dağılımı, yalnızca Python 3.11+ |
-| 🔜 0.3.0 | Geri alma: `rm -rf` yerine işletim sistemi çöp kutusuna (veya `--stash`) taşıma |
-| 🔜 | Çok büyük ağaçlar için paralel tarama (`--jobs`) |
+| ✅ 0.3.0 | Geri alma: `--delete` çöp kasasına taşır, `devdust undo` geri getirir, `devdust purge` işi bitirir |
+| 🔜 0.4.0 | Çok büyük ağaçlar için paralel tarama (`--jobs`) |
 | 🔜 | `.gitignore` farkındalığı ve tek dosyada proje bazlı ayarlar |
 | 🔜 | Etkileşimli seçim ekranı: klasörleri tek tek seçme |
 | 💭 | Editör / CI entegrasyonları, JSON şeması, `devdust doctor`, kabuk tamamlama |
@@ -131,8 +130,36 @@ Klasör silmek sağduyu gerektirir; `devdust`'un kendi kuralları var:
    durdurmaz; stderr'e raporlanır ve çıkış koduna yansır. Salt-okunur ağaçlar
    bir kez açılır ve yeniden denenir.
 
-Henüz **geri alma yok** — silinen bir `node_modules`'ü geri getirmenin yolu
-yeniden kurmak. 0.3.0 maddesi tam olarak bununla ilgili.
+`--delete` varsayılan olarak hiçbir şeyi yok etmez: klasörleri bir **çöp
+kasasına** taşır ve nereden geldiklerini hatırlar. Yanlış bir `--kinds` ya da
+fazla cömert bir `--top` artık yeniden kurma değil, bir `devdust undo` demek.
+`--hard` kasayı atlar ve gerçekten silen tek moddur.
+
+## Geri alma
+
+<img src="docs/demo-undo.svg" alt="devdust undo beş klasörü geri getiriyor" width="560">
+
+```
+$ devdust ~ --delete --yes
+  ✓ stashed 5 of 5 directories (154 MB) as 20261030T182541-0791
+  undo with: devdust undo 20261030T182541-0791
+
+$ devdust stash                    # kasada ne var?
+$ devdust undo                     # en yeni kasa, geldiği yere geri
+$ devdust undo 20261030T182541     # belirli bir kasa (tekil önek yeter)
+$ devdust undo --only node_modules # sadece biri
+$ devdust purge --all              # geri almak yok: temelli gitti
+```
+
+Kasa `~/.local/state/devdust/stash` altında durur (`$DEVFDUST_STASH` veya
+`$XDG_STATE_HOME` değiştirebilir); her çalıştırma için bir klasör ve bir
+`manifest.json` yazılır. Manifest; özgün mutlak yolu, ölçülen boyutu ve eşleşen
+kuralı saklar — undo tahmin etmez, manifesti okur. En yeni 8 kayıt tutulur,
+eskiler otomatik temizlenir; böylece kasa, çözmek için kurulduğu disk sorununa
+kendisi dönüşmez.
+
+Geri konacak yolda bir şey varsa `undo` reddeder ve söyler; `--force` üzerine
+yazar.
 
 ## Ayarlar
 
@@ -180,12 +207,17 @@ satırıdır, yani dosya önce dokümantasyon, sonra ayardır.
 ```
 devdust [PATH ...] [seçenekler]
 devdust rules            # bilinen tüm klasör desenleri
+devdust stash            # --delete ne bıraktı
+devdust undo [ID]        # geri koy
+devdust purge [ID|--all] # artık geri alamayacak hâle getir
 devdust init [DİZİN]     # başlangıç .devdust.toml dosyası yazar
 ```
 
 | Seçenek | Ne yapar |
 | --- | --- |
-| `--delete` | Gösterilen klasörleri siler (varsayılan: sadece rapor) |
+| `--delete` | Gösterilen klasörleri çöp kasasına taşır (önce sorar) |
+| `--hard` | `--delete` ile: gerçekten siler, geri alınamaz |
+| `--stash-dir YOL` | Kasanın yeri (varsayılan `~/.local/state/devdust/stash`) |
 | `-y`, `--yes` | Onay sorusunu atlar (stdin TTY değilse zorunlu) |
 | `--include-review` | `build/`, `bin/`, `target/` gibi isimleri de değerlendirir |
 | `--kinds LIST` | Ekosistem filtresi, örn. `--kinds node,python` |

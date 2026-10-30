@@ -33,7 +33,7 @@ def test_relative_links_resolve(document):
     assert broken == [], f"broken links in {document}: {broken}"
 
 
-@pytest.mark.parametrize("image", ["docs/demo.svg", "docs/demo-delete.svg"])
+@pytest.mark.parametrize("image", ["docs/demo.svg", "docs/demo-delete.svg", "docs/demo-undo.svg"])
 def test_demo_svg_is_valid_xml(image):
     tree = ET.parse(REPO / image)
     root = tree.getroot()
