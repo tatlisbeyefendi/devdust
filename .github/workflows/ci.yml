@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: tests (py${{ matrix.python }} on ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        include:
+          - os: macos-latest
+            python: "3.12"
+          - os: windows-latest
+            python: "3.12"
+    continue-on-error: ${{ matrix.os == 'windows-latest' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+      - name: Test
+        run: python -m pytest --cov --cov-report=term-missing
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install ruff
+      - name: ruff check
+        run: ruff check .
+      - name: ruff format
+        run: ruff format --check .
+
+  package:
+    name: build & smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip build
+      - run: python -m build
+      - name: Install the wheel in a clean environment
+        run: |
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/pip install dist/*.whl
+          /tmp/smoke/bin/devdust --version
+          /tmp/smoke/bin/devdust rules > /dev/null
+      - name: Scan and clean a throw-away tree
+        run: |
+          mkdir -p /tmp/tree/web/node_modules/pkg /tmp/tree/api/__pycache__
+          head -c 4096 /dev/urandom > /tmp/tree/web/node_modules/pkg/index.js
+          head -c 1024 /dev/urandom > /tmp/tree/api/__pycache__/core.pyc
+          /tmp/smoke/bin/devdust /tmp/tree --json > report.json
+          python -c "import json; r = json.load(open('report.json')); assert r['totals']['directories'] == 2, r; assert r['totals']['size'] == 5120, r; print('smoke scan ok:', r['totals'])"
+          /tmp/smoke/bin/devdust /tmp/tree --delete --yes
+          test ! -d /tmp/tree/web/node_modules
+          test ! -d /tmp/tree/api/__pycache__
+          echo "smoke delete ok"
