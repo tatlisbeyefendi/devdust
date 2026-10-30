@@ -7,9 +7,9 @@ import os
 import re
 import shutil
 import sys
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from datetime import timedelta
-from typing import Callable, ClassVar
+from typing import ClassVar
 
 # --------------------------------------------------------------------- sizes
 

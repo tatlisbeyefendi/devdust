@@ -2,8 +2,9 @@
 
 **Projelerinizin geride bıraktığı build çıktılarını ve cache'leri bulun — sonra güvenle silin.**
 
-[![Python](https://img.shields.io/badge/python-3.9%2B-3776ab?logo=python&logoColor=white)](https://www.python.org)
+[![Python](https://img.shields.io/badge/python-3.11%2B-3776ab?logo=python&logoColor=white)](https://www.python.org)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](pyproject.toml)
+[![Status: demo](https://img.shields.io/badge/status-working%20demo-orange)](#proje-durumu)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 <img src="docs/demo.svg" alt="devdust örnek bir çalışma alanında temizlenebilir klasörleri listeliyor" width="720">
@@ -19,6 +20,35 @@
 - **Akıllı budama.** Bir klasör eşleştiğinde boyutu bir kez ölçülür, içine
   girilmez; böylece toplamlar dürüst kalır ve tarama hızlı olur.
 - **Sıfır bağımlılık.** Tek `pip install`, denetlenecek tedarik zinciri yok.
+
+## Proje durumu
+
+> **Bu çalışan bir demo ve gelişmeye devam edecek.** 🚧
+>
+> `devdust` küçük ama baştan sona çalışan bir araç: tarıyor, filtreliyor,
+> raporluyor, siliyor; testleri ve CI'ı var. Yine de bu bir **fikir demosu**,
+> olgun bir ürün değil. **0.2.0** sürümü erken bir önizleme: CLI'ın, çıktının ve
+> kural tablosunun sürümler arasında değişmesini bekleyin ve silmeyi kalıcı kabul
+> edin (henüz geri alma yok).
+>
+> Demoyu erken yayınlamanın amacı, son aracın şeklini baştan görünür ve
+> denenebilir kılmak. Geri bildirim, hata raporları ve "benim ekosistemimi de
+> öğren" istekleri yol haritasını ilerleten şeyler.
+
+### Yol haritası
+
+| | Madde |
+| --- | --- |
+| ✅ 0.1.0 | Tarama, filtreler, iki güven seviyesi, güvenli silme, JSON çıktısı |
+| ✅ 0.2.0 | `.devdust.toml` + `devdust init`, `--summary` dağılımı, yalnızca Python 3.11+ |
+| 🔜 0.3.0 | Geri alma: `rm -rf` yerine işletim sistemi çöp kutusuna (veya `--stash`) taşıma |
+| 🔜 | Çok büyük ağaçlar için paralel tarama (`--jobs`) |
+| 🔜 | `.gitignore` farkındalığı ve tek dosyada proje bazlı ayarlar |
+| 🔜 | Etkileşimli seçim ekranı: klasörleri tek tek seçme |
+| 💭 | Editör / CI entegrasyonları, JSON şeması, `devdust doctor`, kabuk tamamlama |
+
+Öncelikler gerçek kullanımla şekilleniyor — iş akışınıza eksik gelen bir şey
+varsa issue açın.
 
 ---
 
@@ -38,8 +68,10 @@ $ cd devdust
 $ pipx install .
 ```
 
-Linux ve macOS'ta Python 3.9+. Windows denenmedi (yol işlemleri platformdan
-bağımsız, ama testler yalnızca POSIX'te koşuyor).
+Linux ve macOS'ta Python 3.11+. Windows denenmedi (yol işlemleri platformdan
+bağımsız, ama testler yalnızca POSIX'te koşuyor). Alt sınırın 3.11 olmasının
+sebebi, ayar dosyasının standart kütüphanedeki `tomllib` ile okunması — böylece
+"sıfır bağımlılık" sözü korunuyor.
 
 ## Hızlı başlangıç
 
@@ -48,6 +80,7 @@ $ devdust                     # bulunduğunuz dizinde kuru çalışma
 $ devdust ~/work ~/oss        # birden fazla kök dizin
 $ devdust --min-size 100MB    # sadece büyük olanlar
 $ devdust --older-than 90d    # 3 aydır dokunulmamış cache'ler
+$ devdust --summary           # yer tam olarak nereye gidiyor?
 $ devdust --delete            # gördüklerinizi silin (onay ister)
 ```
 
@@ -84,21 +117,70 @@ Klasör silmek sağduyu gerektirir; `devdust`'un kendi kuralları var:
 2. **İsmi tartışmalı olanlar ikinci onay ister.** `build/`, `bin/`, `obj/`,
    `target/`, `vendor/` gibi klasörler `review` seviyesindedir: sadece
    `--include-review` ile listelenir.
-3. **Taranan kökler asla aday olmaz.** `devdust`'u bir `node_modules`
+3. **Yıkıcı seçenekler ayar dosyasından açılamaz.** `.devdust.toml` neyin
+   *raporlanacağını* değiştirebilir; `--delete` veya `--yes`'i asla açamaz.
+   Dosya silmek her seferinde komut satırında verilen açık bir karardır.
+4. **Taranan kökler asla aday olmaz.** `devdust`'u bir `node_modules`
    klasörüne yönlendirirseniz, o klasörün kendisini silmeyi önermez. `$HOME`,
    çalışma dizini ve dosya sistemi kökü de korunur.
-4. **Sembolik linkler ne izlenir ne silinir.** `/` hedefini gösteren bir link
+5. **Sembolik linkler ne izlenir ne silinir.** `/` hedefini gösteren bir link
    "kazanılabilir alan"ı şişiremez, veri kaybına da dönüşemez.
-5. **Yollar taranan kökün içinde olmak zorunda.** Aksi hâlde silme koruması
+6. **Yollar taranan kökün içinde olmak zorunda.** Aksi hâlde silme koruması
    reddeder.
-6. **Hata tek klasörle sınırlı kalır.** Yazılamayan bir kayıt çalışmayı
+7. **Hata tek klasörle sınırlı kalır.** Yazılamayan bir kayıt çalışmayı
    durdurmaz; stderr'e raporlanır ve çıkış koduna yansır. Salt-okunur ağaçlar
    bir kez açılır ve yeniden denenir.
+
+Henüz **geri alma yok** — silinen bir `node_modules`'ü geri getirmenin yolu
+yeniden kurmak. 0.3.0 maddesi tam olarak bununla ilgili.
+
+## Ayarlar
+
+Aynı bayrakları tekrar tekrar yazmamak için tercihler `.devdust.toml` dosyasında
+tutulabilir:
+
+```console
+$ devdust init          # her şeyi yorum satırı olarak yazan başlangıç dosyası
+```
+
+```toml
+# .devdust.toml
+[devdust]
+paths = ["~/code", "~/oss"]     # varsayılan kökler
+min_size = "20MB"               # küçükleri görmezden gel
+older_than = "30d"              # sadece kimsenin dokunmadıkları
+kinds = ["node", "python"]      # kendi alanında kal
+exclude = ["vendor", "*-backup"]
+summary = true                  # dağılımı her zaman göster
+```
+
+Aranma sırası:
+
+1. `--config DOSYA` verildiyse o,
+2. bulunulan dizinde, sonra üst dizinlerde `.devdust.toml` (arama `$HOME`'da
+   durur),
+3. `$XDG_CONFIG_HOME/devdust/config.toml` (varsayılan
+   `~/.config/devdust/config.toml`).
+
+Komut satırı bayrakları her zaman dosyadan önceliklidir, `--no-config` tüm ayar
+dosyalarını yok sayar ve bilinmeyen anahtarlar öneriyle birlikte reddedilir:
+
+```console
+$ devdust
+devdust: config: /home/dev/.devdust.toml: unknown key(s) in [devdust]:
+  'min_sizes' (did you mean 'min_size'?). Known keys: paths, exclude, kinds,
+  min_size, older_than, include_review, top, sort, color, summary
+```
+
+`devdust init` varsayılan olarak hiçbir şeyi değiştirmez: bütün ayarlar yorum
+satırıdır, yani dosya önce dokümantasyon, sonra ayardır.
 
 ## Kullanım
 
 ```
 devdust [PATH ...] [seçenekler]
+devdust rules            # bilinen tüm klasör desenleri
+devdust init [DİZİN]     # başlangıç .devdust.toml dosyası yazar
 ```
 
 | Seçenek | Ne yapar |
@@ -113,12 +195,26 @@ devdust [PATH ...] [seçenekler]
 | `--max-depth N` | Kökün altında `N` seviyeden fazla derine inmez |
 | `--top N` | En fazla `N` kayıt gösterir; `0` hepsi (varsayılan `25`) |
 | `--sort {size,age,path,kind}` | Sıralama (varsayılan: en büyük önce) |
-| `--json` | Makine okunur çıktı (`--top` ile kısaltılmaz) |
+| `--summary` | Ekosistem bazında "yer nereye gidiyor" dağılımı ekler |
+| `--config DOSYA` | Ayar dosyası aramak yerine bu dosyayı kullanır |
+| `--no-config` | Tüm ayar dosyalarını yok sayar |
+| `--json` | Makine okunur akıt (`--top` ile kısaltılmaz) |
 | `--color {auto,always,never}` | Renk denetimi; `NO_COLOR` / `FORCE_COLOR` da dikkate alınır |
 | `--version` | Sürümü yazar |
-| `rules` (alt komut) | Bilinen tüm desenleri listeler |
 
 Çıkış kodları: `0` başarılı, `1` tarama veya silme hatası, `2` hatalı kullanım.
+
+### `--summary` dağılımı
+
+```console
+$ devdust ~ --summary
+  ...
+  where the space goes
+  node      152 MB  ███████████████             66%
+  rust     64.6 MB  ██████                      28%
+  java     10.4 MB  █                            5%
+  python   1.81 MB  █                            1%
+```
 
 ### JSON çıktısı
 
@@ -133,8 +229,10 @@ $ devdust ~/work --json | jq '.totals'
 ```
 
 Her kayıt `path`, `size`, `size_human`, `files`, `age_seconds`, `age_human`,
-`kind`, `confidence` ve eşleşen `rule` alanlarını taşır. `--delete` ile birlikte
-`removed` bloğu da (kazanılan bayt, silinen klasör sayısı, hatalar) çıktıya eklenir.
+`kind`, `confidence` ve eşleşen `rule` alanlarını taşır. Çıktı ayrıca
+`summary.by_kind` / `summary.by_confidence` toplamlarını ve kullanılan ayar
+dosyasını (`yoksa null`) içerir. `--delete` ile birlikte kazanılan baytı ve
+hataları taşıyan `removed` bloğu eklenir.
 
 ## Tarifler
 
@@ -146,7 +244,7 @@ devdust ~/code --min-size 50MB --older-than 90d --delete
 devdust . --exclude .git --kinds node --delete --yes
 
 # diski tam olarak ne yiyor?
-devdust ~ --top 0 --sort size --min-size 10MB
+devdust ~ --summary --top 0 --sort size --min-size 10MB
 
 # zamanda yolculuk: geçen yıldan beri dokunulmamış projeler
 devdust ~/code --sort age --top 10
@@ -176,14 +274,16 @@ Dizin yapısı:
 ```
 src/devdust/
   cli.py          argümanlar, çıktı, çıkış kodları
+  config.py       .devdust.toml keşfi, okuma ve doğrulama
   scanner.py      dolaşma, boyut hesabı, güvenlik korumaları, silme
   rules.py        desen tablosu ve güven seviyeleri
   formatting.py   boyut, yaş, renk, tablo
 tests/            birim + uçtan uca testler; ağ yok, diskte fixture yok
 ```
 
-Yeni bir desen eklemek `src/devdust/rules.py` içinde tek satırlık bir iştir;
-ayrıntılar [CONTRIBUTING.md](CONTRIBUTING.md).
+Yeni bir desen `src/devdust/rules.py` içinde tek satırlık bir iştir; yeni bir
+ayar anahtarı ise `KNOWN_KEYS`, okuyucu, `template()` ve dokümanların birlikte
+güncellenmesi demektir. Ayrıntılar [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## SSS
 
@@ -197,14 +297,21 @@ Hayır, asla. Link'li klasörler ölçüm sırasında atlanır ve silme korumas�
 tarafından reddedilir.
 
 **`.gitignore`'a uyar mı?**
-Hayır. `devdust` klasör isimlerine bakar, depo kurallarına değil. Görmezden
-gelinen ama cache'e benzeyen yollar yine raporlanır (genelde istediğiniz budur);
-`.git/` içine hiç girilmez.
+Henüz hayır ([yol haritasında](#yol-haritası)). `devdust` klasör isimlerine
+bakar, depo kurallarına değil; cache'e benzeyen ve görmezden gelinen yollar yine
+raporlanır (genelde istediğiniz budur) ve `.git/` içine hiç girilmez.
 
 **Boyutlar "görünen" boyut mu, diskte kapladığı mı?**
 Görünen boyut: her dosyanın `st_size` toplamı, yani `du --apparent-size`. Clone,
 reflink veya hardlink kullanan dosya sistemlerinde (APFS, Btrfs, `pnpm` store)
 geri kazanacağınız alan gösterilenden az olabilir.
+
+**Silmeyi geri alabilir miyim?**
+0.2.0'da hayır — silme kalıcı. Çöp kutusu / stash desteği sıradaki kilometre
+taşı.
+
+**Windows?**
+Çalışması gerekir ama denenmedi; hatayı testle birlikte bildirirseniz sevinirim.
 
 ## Lisans
 

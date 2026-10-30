@@ -2,8 +2,9 @@
 
 **Find the build artifacts and caches your projects leave behind — and sweep them away safely.**
 
-[![Python](https://img.shields.io/badge/python-3.9%2B-3776ab?logo=python&logoColor=white)](https://www.python.org)
+[![Python](https://img.shields.io/badge/python-3.11%2B-3776ab?logo=python&logoColor=white)](https://www.python.org)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](pyproject.toml)
+[![Status: demo](https://img.shields.io/badge/status-working%20demo-orange)](#project-status)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 <img src="docs/demo.svg" alt="devdust listing reclaimable directories in a demo workspace" width="720">
@@ -19,6 +20,35 @@ and deletes them only when you ask, and only the ones you were shown.
 - **Prunes smartly.** A match is measured once and its subtree is skipped, so
   the totals are honest and the walk stays fast.
 - **No dependencies.** One `pip install`, no supply chain to audit.
+
+## Project status
+
+> **This is a working demo, and it is going to keep growing.** 🚧
+>
+> `devdust` is a small, complete tool — it scans, filters, reports, deletes and
+> has a test suite and CI to keep it honest — but it is a **demo of the idea**,
+> not a mature product. Version **0.2.0** is an early preview: expect the CLI,
+> the output and the rule table to change between releases, and treat deletion
+> as permanent (there is no undo yet).
+>
+> The point of shipping it as a demo is to make the shape of the final tool
+> visible and testable early. Feedback, bug reports and "please teach it about
+> my ecosystem" issues are exactly what moves the roadmap along.
+
+### Roadmap
+
+| | Item |
+| --- | --- |
+| ✅ 0.1.0 | Scan, filter, two confidence tiers, safe delete, JSON output |
+| ✅ 0.2.0 | `.devdust.toml` + `devdust init`, `--summary` breakdown, Python 3.11+ only |
+| 🔜 0.3.0 | Undo: move to the OS trash (or a `--stash` directory) instead of `rm -rf` |
+| 🔜 | Parallel scanning (`--jobs`) for very large trees |
+| 🔜 | `.gitignore`-aware mode, and per-project overrides in one config |
+| 🔜 | Interactive review screen: pick directories one by one |
+| 💭 | Editor / CI integrations, JSON schema, `devdust doctor`, shell completions |
+
+Priorities are shaped by real usage — if something is missing for your
+workflow, open an issue.
 
 ---
 
@@ -38,8 +68,10 @@ $ cd devdust
 $ pipx install .
 ```
 
-Python 3.9+ on Linux and macOS. Windows is best-effort (path handling is
-platform-neutral, but the test suite is only run on POSIX).
+Python 3.11+ on Linux and macOS. Windows is best-effort (path handling is
+platform-neutral, but the test suite is only run on POSIX). Python 3.11 is the
+floor so that the config file can be parsed with the standard library's
+`tomllib` — keeping the zero-dependency promise.
 
 ## Quick start
 
@@ -48,6 +80,7 @@ $ devdust                     # dry run over the current directory
 $ devdust ~/work ~/oss        # several roots at once
 $ devdust --min-size 100MB    # only the heavy hitters
 $ devdust --older-than 90d    # caches you have not touched in three months
+$ devdust --summary           # where is the space actually going?
 $ devdust --delete            # remove what you saw (asks for confirmation)
 ```
 
@@ -92,22 +125,70 @@ Deleting directories deserves paranoia, so `devdust` has a few rules of its own:
 2. **Ambiguous names need a second opinion.** `build/`, `bin/`, `obj/`,
    `target/`, `vendor/` and friends are `review` tier: visible with
    `--include-review`, invisible otherwise.
-3. **Scan roots are never candidates.** Pointing `devdust` at a
+3. **Destructive flags are not configurable.** A `.devdust.toml` can change
+   what gets *reported*; it can never turn on `--delete` or `--yes`. Deleting
+   files stays an explicit decision on the command line, every time.
+4. **Scan roots are never candidates.** Pointing `devdust` at a
    `node_modules` directory does not offer to delete the directory itself.
    Neither is `$HOME`, the current directory or a filesystem root ever touched.
-4. **Symlinks are never followed and never deleted.** A link into `/` cannot
+5. **Symlinks are never followed and never deleted.** A link into `/` cannot
    inflate your "reclaimable" number, and it cannot be turned into a data loss
    report either.
-5. **Paths must live inside a scanned root.** Anything else is refused by the
+6. **Paths must live inside a scanned root.** Anything else is refused by the
    deletion guard, even if it somehow reached the list.
-6. **Failures are per-directory.** One unwritable entry does not abort the run;
+7. **Failures are per-directory.** One unwritable entry does not abort the run;
    it is reported on stderr and reflected in the exit code. Read-only trees are
    unlocked and retried once.
+
+There is **no undo** yet — restoring a deleted `node_modules` means reinstalling
+it. That is exactly what the 0.3.0 roadmap item is about.
+
+## Configuration
+
+Preferences can live in a `.devdust.toml` file, so you do not have to retype the
+same flags:
+
+```console
+$ devdust init          # writes a starter file, everything commented out
+```
+
+```toml
+# .devdust.toml
+[devdust]
+paths = ["~/code", "~/oss"]     # default roots
+min_size = "20MB"               # ignore the small stuff
+older_than = "30d"              # only things nobody has touched
+kinds = ["node", "python"]      # stay in your lane
+exclude = ["vendor", "*-backup"]
+summary = true                  # always show the breakdown
+```
+
+Where it is looked up:
+
+1. `--config FILE` if you pass one,
+2. `.devdust.toml` in the current directory, then in each parent directory
+   (the search stops at `$HOME`),
+3. `$XDG_CONFIG_HOME/devdust/config.toml` (default `~/.config/devdust/config.toml`).
+
+Command line flags always win over the file, `--no-config` ignores every config
+file, and unknown keys are rejected with a suggestion:
+
+```console
+$ devdust
+devdust: config: /home/dev/.devdust.toml: unknown key(s) in [devdust]:
+  'min_sizes' (did you mean 'min_size'?). Known keys: paths, exclude, kinds,
+  min_size, older_than, include_review, top, sort, color, summary
+```
+
+`devdust init` changes nothing by default: every setting is commented out, so
+the file is documentation first and configuration second.
 
 ## Usage
 
 ```
 devdust [PATH ...] [options]
+devdust rules            # every known directory pattern
+devdust init [DIR]       # write a starter .devdust.toml
 ```
 
 | Option | What it does |
@@ -122,12 +203,26 @@ devdust [PATH ...] [options]
 | `--max-depth N` | Do not descend more than `N` levels below each root |
 | `--top N` | Show at most `N` entries; `0` shows everything (default `25`) |
 | `--sort {size,age,path,kind}` | Entry order (default: biggest first) |
+| `--summary` | Add a "where the space goes" breakdown by ecosystem |
+| `--config FILE` | Use this config file instead of searching for one |
+| `--no-config` | Ignore every config file |
 | `--json` | Machine-readable output (never truncated by `--top`) |
 | `--color {auto,always,never}` | Colour control; also honours `NO_COLOR` / `FORCE_COLOR` |
 | `--version` | Print the version |
-| `rules` (subcommand) | List every pattern `devdust` knows about |
 
 Exit codes: `0` success, `1` a scan or deletion failed, `2` invalid usage.
+
+### The `--summary` breakdown
+
+```console
+$ devdust ~ --summary
+  ...
+  where the space goes
+  node      152 MB  ███████████████             66%
+  rust     64.6 MB  ██████                      28%
+  java     10.4 MB  █                            5%
+  python   1.81 MB  █                            1%
+```
 
 ### JSON output
 
@@ -142,9 +237,10 @@ $ devdust ~/work --json | jq '.totals'
 ```
 
 Every item carries `path`, `size`, `size_human`, `files`, `age_seconds`,
-`age_human`, `kind`, `confidence` and the `rule` that matched. With `--delete`
-the payload also includes a `removed` block with the freed bytes and any
-failures.
+`age_human`, `kind`, `confidence` and the `rule` that matched. The payload also
+contains `summary.by_kind` / `summary.by_confidence` totals and the config file
+that was used (`null` when there is none). With `--delete` it gains a `removed`
+block with the freed bytes and any failures.
 
 ## Recipes
 
@@ -156,7 +252,7 @@ devdust ~/code --min-size 50MB --older-than 90d --delete
 devdust . --exclude .git --kinds node --delete --yes
 
 # what exactly is eating the disk right now?
-devdust ~ --top 0 --sort size --min-size 10MB
+devdust ~ --summary --top 0 --sort size --min-size 10MB
 
 # time machine: which projects have not been touched since last year?
 devdust ~/code --sort age --top 10
@@ -186,14 +282,16 @@ Layout:
 ```
 src/devdust/
   cli.py          argument parsing, output, exit codes
+  config.py       .devdust.toml discovery, parsing and validation
   scanner.py      walking, size accounting, safety guards, removal
   rules.py        the pattern table and confidence tiers
   formatting.py   sizes, ages, colours, table rendering
 tests/            unit + end-to-end tests, no network and no fixtures on disk
 ```
 
-Adding a pattern is a one-line change in `src/devdust/rules.py`; see
-[CONTRIBUTING.md](CONTRIBUTING.md).
+Adding a pattern is a one-line change in `src/devdust/rules.py`; adding a config
+key means touching `KNOWN_KEYS`, the parser, `template()` and the docs together.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## FAQ
 
@@ -207,15 +305,18 @@ No — never. Symlinked directories are skipped while measuring and refused by t
 deletion guard.
 
 **Does it respect `.gitignore`?**
-No. `devdust` looks at directory names, not repository rules. Ignored paths that
-look like caches are still reported (that is usually what you want) and
-`.git/` is never entered.
+Not yet (it is on the [roadmap](#roadmap)). `devdust` looks at directory names,
+not repository rules; ignored paths that look like caches are still reported
+(that is usually what you want) and `.git/` is never entered.
 
 **Are the sizes "apparent" or "on disk"?**
 Apparent: the sum of `st_size` for every regular file, which is what `du
 --apparent-size` reports. On filesystems with clones, reflinks or hardlinks
-(APFS, Btrfs, `pnpm` stores) the space you actually get back can be smaller
-than the number shown.
+(APFS, Btrfs, `pnpm` stores) the space you actually get back can be smaller than
+the number shown.
+
+**Can I undo a deletion?**
+Not in 0.2.0 — deletion is permanent. Trash/stash support is the next milestone.
 
 **Windows?**
 It should work, but it is untested; bug reports with a failing test are welcome.

@@ -7,12 +7,11 @@ import os
 import shutil
 import stat
 import time
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import timedelta
 from fnmatch import fnmatchcase
 from pathlib import Path
-from typing import Callable
 
 from .rules import RULES, Rule
 

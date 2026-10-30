@@ -22,7 +22,7 @@ Optional: `pre-commit install` to run the same checks on every commit.
 Most contributions are one line in [`src/devdust/rules.py`](src/devdust/rules.py):
 
 ```python
-Rule(".sass-cache", "node", "Sass compiler cache"),
+(Rule(".sass-cache", "node", "Sass compiler cache"),)
 ```
 
 Guidelines:
@@ -39,6 +39,23 @@ Guidelines:
 
 Then update the table in `README.md` (and `README.tr.md`) if the new kind is not
 already listed, and add a `CHANGELOG.md` entry.
+
+## Adding a configuration key
+
+The config file is intentionally boring: one flat `[devdust]` table. A new key
+means four small edits in one commit:
+
+1. `KNOWN_KEYS` and the `Config` dataclass in `src/devdust/config.py`,
+2. a `_parse` branch in `load()` (reuse the existing validators when possible),
+3. the corresponding `parser.add_argument` in `src/devdust/cli.py`, if the flag
+   does not exist yet,
+4. the commented example in `config.template()` plus the README tables.
+
+Add tests to `tests/test_config.py` for the happy path *and* for the error
+message — a config file that fails silently is worse than no config file.
+
+**Never add a key that can turn on `--delete` or `--yes`.** `tests/test_config.py`
+asserts that those keys are rejected as unknown.
 
 ## Changing the safety model
 
