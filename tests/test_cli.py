@@ -12,6 +12,7 @@ import pytest
 
 from devdust import __version__
 from devdust.cli import main
+from devdust.config import template
 
 
 def run(capsys, *argv):
@@ -198,3 +199,160 @@ class _FakeTty(io.StringIO):
 
     def isatty(self) -> bool:
         return True
+
+
+# ------------------------------------------------------------------ config file
+
+
+def write_config(directory, body: str) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / ".devdust.toml"
+    path.write_text(body, encoding="utf-8")
+    return path
+
+
+def test_config_file_supplies_defaults(workspace, tmp_path, capsys):
+    config = write_config(tmp_path / "cfg", '[devdust]\nmin_size = "5KB"\n')
+    code, out, _ = run(capsys, str(workspace), "--config", str(config), "--color", "never")
+    assert code == 0
+    assert "node_modules" in out
+    assert ".next" not in out  # 1 KiB, filtered out by the config
+    assert ".devdust.toml" in out  # and the header says where the settings came from
+
+
+def test_cli_flags_beat_the_config_file(workspace, tmp_path, capsys):
+    config = write_config(tmp_path / "cfg", '[devdust]\nmin_size = "100KB"\n')
+    _, out, _ = run(
+        capsys,
+        str(workspace),
+        "--config",
+        str(config),
+        "--min-size",
+        "0",
+        "--color",
+        "never",
+    )
+    assert ".next" in out
+
+
+def test_no_config_ignores_the_file(workspace, tmp_path, monkeypatch, capsys):
+    write_config(tmp_path, '[devdust]\nmin_size = "100KB"\n')
+    monkeypatch.chdir(tmp_path)
+    _, out, _ = run(capsys, str(workspace), "--no-config", "--color", "never")
+    assert ".next" in out  # the config in the working directory was ignored
+
+
+def test_config_can_supply_the_roots(tmp_path, workspace, capsys):
+    config = write_config(tmp_path / "cfg", f'[devdust]\npaths = ["{workspace}"]\n')
+    code, out, _ = run(capsys, "--config", str(config), "--color", "never")
+    assert code == 0
+    assert "node_modules" in out
+
+
+def test_config_can_enable_review_directories(workspace, tmp_path, capsys):
+    config = write_config(tmp_path / "cfg", "[devdust]\ninclude_review = true\n")
+    _, out, _ = run(capsys, str(workspace), "--config", str(config), "--color", "never")
+    assert "review" in out and "build" in out
+
+
+def test_config_is_discovered_without_a_flag(tmp_path, workspace, monkeypatch, capsys):
+    write_config(tmp_path, f'[devdust]\npaths = ["{workspace}"]\n')
+    monkeypatch.chdir(tmp_path)
+    code, out, _ = run(capsys, "--color", "never")
+    assert code == 0
+    assert "node_modules" in out
+
+
+def test_broken_config_is_a_usage_error(workspace, tmp_path, capsys):
+    config = write_config(tmp_path / "cfg", "[devdust]\nmin_size = \n")
+    code, _, err = run(capsys, str(workspace), "--config", str(config), "--color", "never")
+    assert code == 2
+    assert "config" in err
+
+
+def test_unknown_config_key_is_reported(workspace, tmp_path, capsys):
+    config = write_config(tmp_path / "cfg", "[devdust]\ndelete = true\n")
+    code, _, err = run(capsys, str(workspace), "--config", str(config), "--color", "never")
+    assert code == 2
+    assert "delete" in err
+
+
+def test_missing_config_file_is_reported(workspace, tmp_path, capsys):
+    code, _, err = run(
+        capsys, str(workspace), "--config", str(tmp_path / "nope.toml"), "--color", "never"
+    )
+    assert code == 2
+    assert "no such config file" in err
+
+
+def test_config_and_no_config_conflict(workspace, tmp_path, capsys):
+    config = write_config(tmp_path / "cfg", "[devdust]\ntop = 1\n")
+    code, _, err = run(
+        capsys, str(workspace), "--config", str(config), "--no-config", "--color", "never"
+    )
+    assert code == 2
+    assert "cannot be combined" in err
+
+
+# ------------------------------------------------------------------ devdust init
+
+
+def test_init_writes_a_starter_file(tmp_path, capsys):
+    code, out, _ = run(capsys, "init", str(tmp_path))
+    assert code == 0
+    written = tmp_path / ".devdust.toml"
+    assert written.is_file()
+    assert "[devdust]" in written.read_text(encoding="utf-8")
+    assert str(written) in out
+
+
+def test_init_output_runs_without_changing_behaviour(tmp_path, workspace, capsys):
+    run(capsys, "init", str(tmp_path))
+    code, out, _ = run(
+        capsys,
+        str(workspace),
+        "--config",
+        str(tmp_path / ".devdust.toml"),
+        "--color",
+        "never",
+    )
+    assert code == 0
+    assert "node_modules" in out and ".next" in out
+
+
+def test_init_refuses_to_overwrite(tmp_path, capsys):
+    existing = tmp_path / ".devdust.toml"
+    existing.write_text("[devdust]\ntop = 2\n", encoding="utf-8")
+    code, _, err = run(capsys, "init", str(tmp_path))
+    assert code == 1
+    assert "already exists" in err
+    assert "top = 2" in existing.read_text(encoding="utf-8")
+
+    code, _, _ = run(capsys, "init", str(tmp_path), "--force")
+    assert code == 0
+    assert existing.read_text(encoding="utf-8") == template()
+
+
+# --------------------------------------------------------------------- summary
+
+
+def test_summary_breakdown(workspace, capsys):
+    code, out, _ = run(capsys, str(workspace), "--summary", "--color", "never")
+    assert code == 0
+    assert "where the space goes" in out
+    assert "node" in out and "python" in out
+    assert "%" in out
+
+
+def test_summary_is_off_by_default(workspace, capsys):
+    _, out, _ = run(capsys, str(workspace), "--color", "never")
+    assert "where the space goes" not in out
+
+
+def test_json_contains_summary_and_config(workspace, tmp_path, capsys):
+    config = write_config(tmp_path / "cfg", "[devdust]\ntop = 1\n")
+    _, out, _ = run(capsys, str(workspace), "--config", str(config), "--json")
+    payload = json.loads(out)
+    assert payload["config"].endswith(".devdust.toml")
+    assert payload["summary"]["by_kind"]["node"]["size"] == 2048 + 4096 + 1024
+    assert set(payload["summary"]["by_confidence"]) == {"safe"}

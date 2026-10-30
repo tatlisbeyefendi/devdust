@@ -43,3 +43,12 @@ def huge_dir(tmp_path: Path) -> Path:
     path = tmp_path / "outside" / "node_modules"
     touch(path / "big.js", 50_000)
     return path
+
+
+@pytest.fixture(autouse=True)
+def isolated_environment(tmp_path, monkeypatch):
+    """Keep every test away from the developer's real home and config files."""
+    home = tmp_path / "_home"
+    home.mkdir(exist_ok=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "_xdg"))

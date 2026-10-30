@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
+from . import config as config_mod
 from . import rules as rules_mod
 from .formatting import (
     Style,
@@ -36,7 +37,16 @@ examples:
   devdust --older-than 90d         only caches untouched for 3 months
   devdust --min-size 100MB --top 0 report everything worth seeing
   devdust --kinds node,python      stay inside one ecosystem
+  devdust --summary                where is the space actually going?
   devdust --delete                 remove the safe matches (asks first)
+
+  devdust init                     write a starter .devdust.toml
+  devdust rules                    list every known directory pattern
+
+Configuration:
+  devdust reads .devdust.toml from the current directory or its parents (up to
+  $HOME), then $XDG_CONFIG_HOME/devdust/config.toml. Command line flags always
+  win. --delete/--yes can never be set from a config file.
 
 exit codes:
   0  nothing to do / everything went fine
@@ -73,7 +83,7 @@ def build_parser() -> argparse.ArgumentParser:
         "paths",
         nargs="*",
         metavar="PATH",
-        help="directories to scan (default: the current directory)",
+        help="directories to scan (default: paths from the config, else '.')",
     )
     parser.add_argument(
         "--delete",
@@ -139,6 +149,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="entry order (default: size, biggest first)",
     )
     parser.add_argument(
+        "--summary",
+        action="store_true",
+        help="add a 'where the space goes' breakdown by ecosystem",
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        metavar="FILE",
+        help="use this config file instead of searching for .devdust.toml",
+    )
+    parser.add_argument(
+        "--no-config",
+        action="store_true",
+        help="ignore every config file and use the built-in defaults",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         dest="as_json",
@@ -194,10 +221,13 @@ def _as_json(
     *,
     elapsed: float,
     removal=None,
+    config_source: Path | None = None,
 ) -> dict[str, Any]:
+    counts = _summary_counts(matches)
     payload: dict[str, Any] = {
         "tool": PROG,
         "version": __version__,
+        "config": str(config_source) if config_source else None,
         "roots": [str(root) for root in result.roots],
         "scanned_dirs": result.scanned_dirs,
         "unreadable": result.unreadable,
@@ -222,6 +252,16 @@ def _as_json(
             }
             for m in matches
         ],
+        "summary": {
+            "by_kind": {
+                kind: {"size": size, "size_human": human_size(size)}
+                for kind, size in sorted(counts["kind"].items(), key=lambda kv: -kv[1])
+            },
+            "by_confidence": {
+                confidence: {"size": size, "size_human": human_size(size)}
+                for confidence, size in counts["confidence"].items()
+            },
+        },
     }
     if removal is not None:
         payload["removed"] = {
@@ -245,7 +285,7 @@ def _cmd_scan(args: argparse.Namespace) -> int:
         print(f"{PROG}: no rules enabled by --kinds/--include-review", file=sys.stderr)
         return 2
 
-    roots = args.paths or ["."]
+    roots = args.paths or list(getattr(args, "config_paths", ()) or ()) or ["."]
     started = time.perf_counter()
     try:
         result = scan(
@@ -267,7 +307,9 @@ def _cmd_scan(args: argparse.Namespace) -> int:
     if args.as_json:
         return _print_json(result, matches, elapsed, args)
 
-    _print_header(style, result, len(roots), elapsed)
+    _print_header(
+        style, result, len(roots), elapsed, config_source=getattr(args, "config_source", None)
+    )
     if not shown:
         _print_empty(style, args)
         return 0
@@ -295,6 +337,8 @@ def _cmd_scan(args: argparse.Namespace) -> int:
             "  "
             + style.yellow(f"! {result.unreadable} directories could not be read (permissions)")
         )
+    if getattr(args, "summary", False):
+        _print_summary(style, shown)
 
     if args.delete:
         return _do_delete(style, result, shown, len(matches), args)
@@ -303,11 +347,54 @@ def _cmd_scan(args: argparse.Namespace) -> int:
     return 0
 
 
-def _print_header(style: Style, result: ScanResult, root_count: int, elapsed: float) -> None:
+def _print_header(
+    style: Style,
+    result: ScanResult,
+    root_count: int,
+    elapsed: float,
+    *,
+    config_source: Path | None = None,
+) -> None:
     title = style.bold(f"{PROG} {__version__}")
-    where = f"{root_count} root{'s' if root_count != 1 else ''}"
-    dirs = human_count(result.scanned_dirs) + " dirs scanned"
-    print(f"{title} · {style.dim(where)} · {style.dim(dirs)} · {style.dim(f'{elapsed:.2f}s')}")
+    bits = [
+        f"{root_count} root{'s' if root_count != 1 else ''}",
+        human_count(result.scanned_dirs) + " dirs scanned",
+        f"{elapsed:.2f}s",
+    ]
+    if config_source is not None:
+        bits.append(_config_label(config_source))
+    print(f"{title} · " + " · ".join(style.dim(bit) for bit in bits))
+
+
+def _config_label(path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(Path.cwd().resolve()))
+    except (ValueError, OSError):
+        return shorten_home(str(path))
+
+
+def _print_summary(style: Style, shown: Sequence[Match]) -> None:
+    """A compact "where the space goes" breakdown of the reported matches."""
+    total = sum(match.size for match in shown)
+    if not total:
+        return
+    by_kind: dict[str, int] = {}
+    for match in shown:
+        by_kind[match.kind] = by_kind.get(match.kind, 0) + match.size
+
+    label_width = min(10, max(len(kind) for kind in by_kind))
+    bar_width = 22
+    print("\n  " + style.dim("where the space goes"))
+    for kind, size in sorted(by_kind.items(), key=lambda kv: (-kv[1], kv[0])):
+        share = size / total
+        filled = round(share * bar_width)
+        if size and filled == 0:
+            filled = 1
+        bar = style.cyan("█" * filled) + " " * (bar_width - filled)
+        print(
+            f"  {kind:<{label_width}}  {human_size(size):>8}  {bar}  "
+            f"{style.dim(f'{share * 100:3.0f}%')}"
+        )
 
 
 def _print_empty(style: Style, args: argparse.Namespace) -> None:
@@ -362,7 +449,13 @@ def _print_json(result: ScanResult, matches: Sequence[Match], elapsed: float, ar
     removal = None
     if args.delete and matches:
         removal = remove(matches, roots=result.roots, dry_run=False)
-    payload = _as_json(result, matches, elapsed=elapsed, removal=removal)
+    payload = _as_json(
+        result,
+        matches,
+        elapsed=elapsed,
+        removal=removal,
+        config_source=getattr(args, "config_source", None),
+    )
     json.dump(payload, sys.stdout, indent=2, ensure_ascii=False)
     sys.stdout.write("\n")
     if removal is not None and removal.failures:
@@ -470,6 +563,78 @@ def _cmd_rules(argv: Sequence[str]) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------- init
+
+
+def _cmd_init(argv: Sequence[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog=f"{PROG} init",
+        description=(
+            "Write a starter .devdust.toml. Every setting is documented and "
+            "commented out, so nothing changes until you edit it."
+        ),
+    )
+    parser.add_argument("directory", nargs="?", default=".", help="where to write it")
+    parser.add_argument("--force", action="store_true", help="overwrite an existing file")
+    args = parser.parse_args(list(argv))
+
+    target = Path(args.directory).expanduser() / config_mod.CONFIG_FILENAME
+    if target.exists() and not args.force:
+        print(
+            f"{PROG}: {target} already exists (use --force to overwrite)",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        target.write_text(config_mod.template(), encoding="utf-8")
+    except OSError as exc:
+        print(f"{PROG}: cannot write {target}: {exc.strerror or exc}", file=sys.stderr)
+        return 1
+    print(f"wrote {target}")
+    print("  every setting is commented out — uncomment what you want, nothing is on by default")
+    return 0
+
+
+# --------------------------------------------------------------------- config
+
+
+def _prescan_config(argv: Sequence[str]) -> tuple[Path | None, bool]:
+    """Find ``--config``/``--no-config`` before the real parse.
+
+    The config file decides the parser's defaults, so it has to be located
+    before ``parse_args`` runs.
+    """
+    explicit: Path | None = None
+    disabled = False
+    index = 0
+    while index < len(argv):
+        arg = argv[index]
+        if arg == "--no-config":
+            disabled = True
+        elif arg == "--config":
+            if index + 1 < len(argv):
+                explicit = Path(argv[index + 1]).expanduser()
+                index += 1
+        elif arg.startswith("--config="):
+            explicit = Path(arg.split("=", 1)[1]).expanduser()
+        index += 1
+    return explicit, disabled
+
+
+def _load_config(argv: Sequence[str]) -> config_mod.Config:
+    explicit, disabled = _prescan_config(argv)
+    if disabled and explicit is not None:
+        raise config_mod.ConfigError("--config and --no-config cannot be combined")
+    if disabled:
+        return config_mod.Config()
+    if explicit is not None:
+        if not explicit.is_file():
+            raise config_mod.ConfigError(f"no such config file: {explicit}")
+        return config_mod.load(explicit)
+    found = config_mod.discover()
+    return config_mod.load(found) if found is not None else config_mod.Config()
+
+
 # --------------------------------------------------------------------- main
 
 
@@ -477,8 +642,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "rules":
         return _cmd_rules(argv[1:])
+    if argv and argv[0] == "init":
+        return _cmd_init(argv[1:])
+
     parser = build_parser()
+    try:
+        config = _load_config(argv)
+    except config_mod.ConfigError as exc:
+        print(f"{PROG}: config: {exc}", file=sys.stderr)
+        return 2
+    if config.provided:
+        parser.set_defaults(**config.as_defaults())
     args = parser.parse_args(argv)
+    args.config_source = config.source
+    args.config_paths = tuple(config.paths)
+
     try:
         return _cmd_scan(args)
     except KeyboardInterrupt:  # pragma: no cover - interactive only
